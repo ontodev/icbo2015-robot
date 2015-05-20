@@ -1,0 +1,130 @@
+\documentclass{icbo}
+
+\usepackage{hyperref}
+
+\begin{document}
+
+\title[ROBOT]{ROBOT: A command-line tool for ontology development}
+\author[Overton \textit{et~al}]{
+James A. Overton,$^{1}$\footnote{To whom correspondence should be addressed: james@overton.ca}\,
+Heiko Dietze,$^{2}$
+Shahim Essaid,$^{3}$\\
+David Osumi-Sutherland,$^{4}$
+and Christopher J. Mungall\,$^{2}$}
+\address{$^{1}$Knocean, Toronto, Ontario, Canada\\
+$^{2}$Lawrence Berkeley National Laboratory, Berkeley, California, USA\\
+$^{3}$Oregon Health and Science University Library, Portland, Oregon, USA\\
+$^{4}$European Bioinformatics Institute, TODO LOCATION}
+
+\maketitle
+
+\begin{abstract}
+ROBOT is a command-line tool for working with ontologies, especially Open Biomedical Ontologies. It builds on OWLAPI and is designed to eventually replace Oort and OWLTools. Currently implemented commands include: reporting on differences between ontologies, merging ontologies, extracting ontology modules, filtering by ObjectProperties, and reasoning. Commands can be chained together to form powerful, repeatable workflows. ROBOT is in early development but is available for use under an open source (BSD) license.
+\end{abstract}
+
+\section{Introduction}
+
+ROBOT is a new command-line tool for working with ontologies, with special emphasis on Open Biomedical Ontologies (OBO) \citep{Smith2007}. It provides convenient commands for merging ontologies, extracting subsets, filtering for selected axioms, running reasoners, and converting between file formats. Commands can be chained together to form powerful, repeatable workflows.
+
+OWLTools and Oort CITE are the predecessors to ROBOT. OWLTools provides various functionality to support the Gene Ontology (GO) and many other ontology projects. In particular, it has supported the transition of GO and other projects from OBO format toward OWL format \citep{Mungall2014}. Oort, the OBO Ontology Release Tool, is part of OWLTools and specifically designed as a command-line tool to help automate the transformation of ontology files from editing versions to publishable release files. Both are used extensively by BerkeleyBOP and other projects, often scripted by GNU Make files and run as part of Continuous Integration systems \citep{Mungall2012}.
+
+OWLTools and Oort provide more core functionality than ROBOT currently does. However, they have ``evolved'' over the years without an overarching design. The resulting tools are powerful, but somewhat difficult for new users to learn, and the code base was designed around certain assumptions that held true for OBO format ontologies but do not apply to OWL format ontologies. (TODO: This may be putting the point badly.)
+
+With ROBOT we aim to create a more modular and extensible code base for developers, and provide a friendlier and more consistent interface for users.  We plan to incrementally replace OWLTools and Oort where they are used, and promote the use of ROBOT as a standard tool for use by other OBO projects. In this paper we describe the design of ROBOT, it usage, and some of our future plans.
+
+ROBOT is Open Source software, released under a BSD license, and is available on GitHub.\footnote{\url{https://github.com/ontodev/robot}} Although ROBOT is in early development, it is available for download as a JAR file and with executable scripts for Unix (including Mac OS X and Linux) and Windows platforms. We appreciate feedback, especially in the form of issues and pull-requests on GitHub.
+
+
+\section{Operations}
+
+ROBOT is a Java project built with Apache Maven\footnote{\url{https://maven.apache.org}}, and divided into two modules:
+
+\begin{itemize}
+  \item {\tt robot-core} implements the basic operations that ROBOT provides
+  \item {\tt robot-command} implements the command-line interface
+\end{itemize}
+
+{\tt robot-core} is designed to be used as a library from any language that runs on the Java Virtual Machine. Operations are classes that provide static methods for working with ontologies, usually building on functionality from OWLAPI \citep{Horridge2011}. The currently implemented operations are:
+
+\begin{itemize}
+  \item {\tt DiffOperation}: find the differences between two ontologies
+  \item {\tt ExtractOperation}: extract a module from an ontology
+  \item {\tt FilterOperation}: remove ObjectProperties from an ontology
+  \item {\tt MergeOperation}: merge axioms from one or more ontologies and their imports into a single ontology
+  \item {\tt ReasonOperation}: use a reasoner to add axioms to an ontology
+\end{itemize}
+
+We plan to provide operations for MIREOT \citep{Courtot2011}, for validating ontologies using SPARQL queries, and for modifying ontologies using SPARQL Update. {\tt robot-core} also provides an {\tt OntologyHelper} class with static utility methods, and an {\tt IOHelper} class that manages state such as prefixes and namespaces.
+
+
+\section{Commands and Chains}
+
+The {\tt robot-command} module implements ROBOT's command-line interface using the Apache Commons CLI library.\footnote{\url{https://commons.apache.org/proper/commons-cli/}}. Each command implements the Command interface, which has {\tt main} and {\tt execute} methods, as well as other common methods for getting the command name and usage information. Commands do not necessarily correspond to operations, but often do. The currently implemented commands are:
+
+\begin{itemize}
+  \item {\tt AnnotateCommand}: add annotations to an ontology
+  \item {\tt ConvertCommand}: save an ontology to another format: RDFXML, RDFOWL, Turtle, Manchester Syntax, OWL Functional Syntax, or OBO.
+  \item {\tt DiffCommand}: show the differences between two ontologies
+  \item {\tt ExportPrefixesCommand}: show the current prefixes (see below)
+  \item {\tt ExtractCommand}
+  \item {\tt FilterCommand}
+  \item {\tt MergeCommand}
+  \item {\tt ReasonCommand}
+\end{itemize}
+
+We plan to implement commands for MIREOT and SPARQL operations.
+
+Commands can be called individually or via the {\tt CommandManager} class. When used with a manager, commands can be {\it chained} into powerful workflows. When chains, commands communicate using a {\tt CommandState} object that contains the current {\tt OWLOntology} instance. Internally, command accepts a state, updates it, and returns it for the next command to use. Externally, each command is named by a verb and followed by zero or more options and their arguments. Figure~\ref{chain} shows an example of a chain of commands for releasing an ontology.
+
+\begin{figure}
+\begin{verbatim}
+robot \
+  merge --input edit.owl \
+  reason --reasoner ELK \
+  annotate \
+    --annotation-file annotations.ttl \
+    --output results/example.owl \
+  convert --output results/example.obo
+\end{verbatim}
+\caption{An example of a chain of commands}
+\label{chain}
+\end{figure}
+
+
+\section{Names and Formats}
+
+One source of problems with OWLTools has been the use of prefixed identifiers in OBO and OWL. With ROBOT we have made use of the JSON-LD standard\footnote{\url{http://www.w3.org/TR/json-ld/}} and the JSONLD-Java\footnote{\url{https://github.com/jsonld-java/jsonld-java}} library to provide a concise and effective method for specifying and resolving prefixes. A JSON-LD {\it context} is a JavaScript object with keys and values that specify how names and prefixes should be expanded, optionally with additional type information. The JSON-LD specification provides an algorithm for resolving names and prefixes to full IRIs.
+
+ROBOT supports the use of JSON-LD for specifying prefixes to be used when loading and saving ontologies and sets of ontology terms. We also support loading ontology and annotation data from JSON-LD files, and from YAML files\footnote{\url{http://yaml.org}} when they have certain structure corresponding to JSON-LD.
+
+
+\section{Documentation and Testing}
+
+With ROBOT we aim to provide a user-friendly tool for ontology users and ontology developers. The project repository includes a README with installation instructions, a tutorial on command-line usage with example data files, and full JavaDoc documentation for the code itself. The command-line tool provides interactive help on commands. We plan to include ROBOT in the online OBO Tutorial CITE, replacing custom Java code with standard ROBOT commands.
+
+In addition to a suite of unit tests, the tutorial itself serves as an integration test suite. A test harness extracts the example commands from the tutorial document, runs them, and compares the resulting files to the known-good example data files. Our unit tests and integration tests are run on every commit using Continuous Integration systems.
+
+
+\section{Demonstration}
+
+At ICBO we plan to demonstrate the installation and use of ROBOT for a range of ontology operations, building on the tutorial document. ROBOT will also be used in the OBO Tutorial session at the conference.
+
+
+\section{Conclusion}
+
+ROBOT is a user-friendly tool for working with ontologies at the command line, and for scripting ontology workflows. It is designed to replace Oort and many of the functions of OWLTools, and to address a wider audience of ontology developers. While still in early development, ROBOT can be used today, and we appreciate feedback via our GitHub repository.
+
+
+\section*{Acknowledgements}
+
+TODO
+
+\bibliographystyle{natbib}
+
+\bibliography{robot}
+
+
+% This is a hack to get the footnotes in the right place.
+\vspace{120pt}
+
+\end{document}
